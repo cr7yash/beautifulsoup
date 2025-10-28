@@ -680,3 +680,25 @@ class SoupStrainer(ElementFilter):
         :meta private:
         """
         return element if self.match(element) else None
+
+
+class SoupReplacer(object):
+    """
+    A class that performs tag replacement during parsing.
+    """
+    
+    def __init__(self, og_tag: str, alt_tag: str):
+        """
+        :param og_tag: The original tag name to replace
+        :param alt_tag: The replacement tag name
+        """
+        self.og_tag = og_tag.lower()
+        self.alt_tag = alt_tag.lower()
+    
+    def should_replace_tag(self, tag_name: str) -> bool:
+        """Check if a tag should be replaced."""
+        return tag_name.lower() == self.og_tag
+    
+    def get_alternate_tag(self) -> str:
+        """Get the alternate tag name."""
+        return self.alt_tag

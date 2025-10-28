@@ -33,6 +33,7 @@ __all__ = [
     "Tag",
     "TemplateString",
     "ElementFilter",
+    "SoupReplacer",
     "UnicodeDammit",
     "CData",
     "Doctype",
@@ -91,6 +92,7 @@ from .formatter import Formatter
 from .filter import (
     ElementFilter,
     SoupStrainer,
+    SoupReplacer,
 )
 from typing import (
     Any,
@@ -215,6 +217,7 @@ class BeautifulSoup(Tag):
         from_encoding: Optional[_Encoding] = None,
         exclude_encodings: Optional[_Encodings] = None,
         element_classes: Optional[Dict[Type[PageElement], Type[PageElement]]] = None,
+        replacer: Optional["SoupReplacer"] = None,
         **kwargs: Any,
     ):
         """Constructor.
@@ -254,6 +257,10 @@ class BeautifulSoup(Tag):
          like to be instantiated instead as the parse tree is
          built. This is useful for subclassing Tag or NavigableString
          to modify default behavior.
+
+        :param replacer: A SoupReplacer object that will replace tags
+         during parsing. This allows for efficient tag replacement
+         without traversing the parse tree again.
 
         :param kwargs: For backwards compatibility purposes, the
          constructor accepts certain keyword arguments used in
@@ -435,6 +442,7 @@ class BeautifulSoup(Tag):
         self.known_xml = self.is_xml
         self._namespaces = dict()
         self.parse_only = parse_only
+        self.replacer = replacer
 
         if hasattr(markup, "read"):  # It's a file-type object.
             markup = markup.read()
@@ -1025,6 +1033,10 @@ class BeautifulSoup(Tag):
         ):
             return None
 
+        # Check if we should replace this tag
+        if self.replacer and self.replacer.should_replace_tag(name):
+            name = self.replacer.get_alternate_tag()
+
         tag_class = self.element_classes.get(Tag, Tag)
         # Assume that this is either Tag or a subclass of Tag. If not,
         # the user brought type-unsafety upon themselves.
@@ -1060,6 +1072,11 @@ class BeautifulSoup(Tag):
         """
         # print("End tag: " + name)
         self.endData()
+        
+        # Check if we should replace this tag (to match start tag replacement)
+        if self.replacer and self.replacer.should_replace_tag(name):
+            name = self.replacer.get_alternate_tag()
+            
         self._popToTag(name, nsprefix)
 
     def handle_data(self, data: str) -> None:
