@@ -683,22 +683,75 @@ class SoupStrainer(ElementFilter):
 
 
 class SoupReplacer(object):
-    """
-    A class that performs tag replacement during parsing.
-    """
-    
-    def __init__(self, og_tag: str, alt_tag: str):
-        """
-        :param og_tag: The original tag name to replace
-        :param alt_tag: The replacement tag name
-        """
-        self.og_tag = og_tag.lower()
-        self.alt_tag = alt_tag.lower()
-    
+    """Replaces tags during parsing and supports transformer."""
+
+    def __init__(
+        self,
+        og_tag: Optional[str] = None,
+        alt_tag: Optional[str] = None,
+        name_xformer: Optional[Callable[[Tag], str]] = None,
+        attrs_xformer: Optional[Callable[[Tag], dict]] = None,
+        xformer: Optional[Callable[[Tag], None]] = None
+    ):
+        # Check if using simple mode
+        if og_tag and alt_tag:
+            if name_xformer or attrs_xformer or xformer:
+                raise ValueError("Can't use both simple mode and transformer mode")
+            self.og_tag = og_tag.lower()
+            self.alt_tag = alt_tag.lower()
+            self.mode = "simple"
+        # Otherwise using transformer mode
+        elif name_xformer or attrs_xformer or xformer:
+            if og_tag or alt_tag:
+                raise ValueError("Can't use both simple mode and transformer mode")
+            self.name_xformer = name_xformer
+            self.attrs_xformer = attrs_xformer
+            self.xformer = xformer
+            self.mode = "transformer"
+            self._original_names: Dict[int, str] = {}
+        else:
+            raise ValueError("Need to provide either og_tag/alt_tag or a transformer function")
+
     def should_replace_tag(self, tag_name: str) -> bool:
-        """Check if a tag should be replaced."""
-        return tag_name.lower() == self.og_tag
-    
+        """Check if we should replace this tag."""
+        if self.mode == "simple":
+            return tag_name.lower() == self.og_tag
+        return self.mode == "transformer"
+
     def get_alternate_tag(self) -> str:
-        """Get the alternate tag name."""
-        return self.alt_tag
+        """Get the replacement tag name (simple mode only)."""
+        if self.mode == "simple":
+            return self.alt_tag
+        raise RuntimeError("get_alternate_tag() only works in simple mode")
+
+    def transform_tag(self, tag: Tag) -> Optional[str]:
+        """Apply transformations to the tag (transformer mode)."""
+        if self.mode != "transformer":
+            return None
+
+        orig_name = tag.name
+
+        # Change the tag name if needed
+        if self.name_xformer:
+            new_name = self.name_xformer(tag)
+            if new_name and new_name != tag.name:
+                self._original_names[id(tag)] = orig_name
+                tag.name = new_name
+
+        # Modify attributes if needed
+        if self.attrs_xformer:
+            new_attrs = self.attrs_xformer(tag)
+            if new_attrs is not None:
+                tag.attrs = new_attrs
+
+        # Do any other custom stuff
+        if self.xformer:
+            self.xformer(tag)
+
+        return self._original_names.get(id(tag))
+
+    def get_original_name(self, tag: Tag) -> Optional[str]:
+        """Look up what this tag's name was before it was changed."""
+        if self.mode != "transformer":
+            return None
+        return self._original_names.get(id(tag))

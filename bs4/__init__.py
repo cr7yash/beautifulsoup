@@ -979,12 +979,25 @@ class BeautifulSoup(Tag):
 
         most_recently_popped = None
 
+        has_open_tags = self.open_tag_counter.get(name, 0) > 0
+        if not has_open_tags and self.replacer and self.replacer.mode == "transformer":
+            # In transformer mode, tag names might have been changed,
+            # so we need to search even if the counter says 0
+            has_open_tags = True
+
         stack_size = len(self.tagStack)
         for i in range(stack_size - 1, 0, -1):
-            if not self.open_tag_counter.get(name):
+            if not has_open_tags:
                 break
             t = self.tagStack[i]
-            if name == t.name and nsprefix == t.prefix:
+            # Check if the tag is matching
+            matches = (name == t.name and nsprefix == t.prefix)
+            if not matches and self.replacer and self.replacer.mode == "transformer":
+                # If the tag was renamed,check its original name
+                original_name = self.replacer.get_original_name(t)
+                matches = (original_name == name and nsprefix == t.prefix)
+
+            if matches:
                 if inclusivePop:
                     most_recently_popped = self.popTag()
                 break
@@ -1033,13 +1046,12 @@ class BeautifulSoup(Tag):
         ):
             return None
 
-        # Check if we should replace this tag
+        # Handle tag replacement if configured
         if self.replacer and self.replacer.should_replace_tag(name):
-            name = self.replacer.get_alternate_tag()
+            if self.replacer.mode == "simple":
+                name = self.replacer.get_alternate_tag()
 
         tag_class = self.element_classes.get(Tag, Tag)
-        # Assume that this is either Tag or a subclass of Tag. If not,
-        # the user brought type-unsafety upon themselves.
         tag_class = cast(Type[Tag], tag_class)
         tag = tag_class(
             self,
@@ -1056,6 +1068,11 @@ class BeautifulSoup(Tag):
         )
         if tag is None:
             return tag
+
+        # Apply any transformer functions if using advanced mode
+        if self.replacer and self.replacer.mode == "transformer":
+            self.replacer.transform_tag(tag)
+
         if self._most_recent_element is not None:
             self._most_recent_element.next_element = tag
         self._most_recent_element = tag
@@ -1072,11 +1089,11 @@ class BeautifulSoup(Tag):
         """
         # print("End tag: " + name)
         self.endData()
-        
-        # Check if we should replace this tag (to match start tag replacement)
-        if self.replacer and self.replacer.should_replace_tag(name):
+
+        # In simple mode, closing tags need same replacement as opening tags
+        if self.replacer and self.replacer.mode == "simple" and self.replacer.should_replace_tag(name):
             name = self.replacer.get_alternate_tag()
-            
+
         self._popToTag(name, nsprefix)
 
     def handle_data(self, data: str) -> None:
