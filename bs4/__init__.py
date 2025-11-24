@@ -510,6 +510,15 @@ class BeautifulSoup(Tag):
         clone.original_encoding = self.original_encoding
         return clone
 
+    def __iter__(self) -> Iterator["PageElement"]:
+        """Iterate over all nodes in the document.
+
+        Iteration is lazy and delegates to the existing `descendants`
+        generator so no list is materialized.
+        """
+        # Include the root `BeautifulSoup` object itself, then all descendants.
+        return self.self_and_descendants
+
     def __getstate__(self) -> Dict[str, Any]:
         # Frequently a tree builder can't be pickled.
         d = dict(self.__dict__)
